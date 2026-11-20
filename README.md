@@ -10,34 +10,37 @@ This microservice provides **Single Product Creation**, **Bulk Excel Ingestion**
 
 ```mermaid
 flowchart TD
-    subgraph Frontend [React / Vite Frontend Portal]
-        UI1[Single Product Form]
-        UI2[Bulk Excel Upload & Mapping]
+    subgraph Frontend ["React / Vite Frontend Portal"]
+        UI1["Single Product Form"]
+        UI2["Bulk Excel Upload & Mapping"]
     end
 
-    subgraph Microservice [Express Node.js Microservice]
-        SVR[server.js - Auth & Proxy]
-        API[routes/api.js - Single Ingestion & AI Trigger]
-        BULK[routes/bulk.js - Queue & Excel Parser]
-        QUEUE[services/queue.js - Batch Processing]
+    subgraph Microservice ["Express Node.js Microservice"]
+        SVR["server.js - Auth & Proxy"]
+        API["routes/api.js - Single Ingestion & AI Trigger"]
+        BULK["routes/bulk.js - Queue & Excel Parser"]
+        QUEUE["services/queue.js - Batch Processing"]
     end
 
-    subgraph AI_Engine [n8n Automation Engine]
-        WH[Webhook Trigger: /product-search]
-        SERPER[Google Serper API - Datasheet Search]
-        SCRAPER[Web Scraping & PDF Parser Node]
-        LLM[Ollama Qwen 2.5:7b - Strict JSON Output]
-        REPAIR[Custom JSON Balance & Repair Parser]
+    subgraph AI_Engine ["n8n Automation Engine"]
+        WH["Webhook Trigger: /product-search"]
+        SERPER["Google Serper API - Datasheet Search"]
+        SCRAPER["Web Scraping & PDF Parser Node"]
+        LLM["Ollama Qwen 2.5:7b - Strict JSON Output"]
+        REPAIR["Custom JSON Balance & Repair Parser"]
     end
 
-    UI1 -->|POST /api/product/generate| API
-    UI2 -->|POST /api/bulk/upload| BULK
+    UI1 -->|"POST /api/product/generate"| API
+    UI2 -->|"POST /api/bulk/upload"| BULK
     BULK --> QUEUE
     QUEUE --> API
-    API -->|HTTP Webhook (N8N_SEARCH_WEBHOOK)| WH
-    WH --> SERPER --> SCRAPER --> LLM --> REPAIR
-    REPAIR -->|Enriched JSON| API
-    API -->|Preview Payload| UI1
+    API -->|"HTTP Webhook (N8N_SEARCH_WEBHOOK)"| WH
+    WH --> SERPER
+    SERPER --> SCRAPER
+    SCRAPER --> LLM
+    LLM --> REPAIR
+    REPAIR -->|"Enriched JSON"| API
+    API -->|"Preview Payload"| UI1
 ```
 
 ---
@@ -101,7 +104,7 @@ Add_products_Microservice/
 
 ### 1. Backend Setup
 ```bash
-cd backend
+cd Add_products_Microservice/backend
 npm install
 cp .env.example .env
 # Fill in your MONGODB_URI and N8N_SEARCH_WEBHOOK in .env
@@ -110,7 +113,7 @@ npm start
 
 ### 2. Frontend Setup
 ```bash
-cd frontend
+cd Add_products_Microservice/frontend
 npm install
 npm run dev
 ```
