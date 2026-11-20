@@ -1,0 +1,520 @@
+{
+  "name": "Communets Auto Upload",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "product-search",
+        "responseMode": "lastNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "feb1c975-286f-4c5e-8678-781e4a4be739",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -2144,
+        -848
+      ],
+      "webhookId": "product-search"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\n\nconst productName = body.product_name || body.productName || '';\nconst brand = body.brand || '';\nconst category = body.category || '';\nconst subcategory = body.subcategory || '';\nconst ean = body.ean || '';\n\nif (!productName) throw new Error('product_name is required');\n\nconst baseData = {\n  product_name: productName,\n  brand: brand,\n  ean: ean,\n  category: category,\n  subcategory: subcategory,\n  unit: body.unit || '',\n  wholesale_qty: body.wholesale_qty || body.wholesaleQty || '',\n  price_wholesale: body.price_wholesale || body.priceWholesale || '',\n  price_retail: body.price_retail || body.priceRetail || '',\n  cost_price: body.cost_price || body.costPrice || '',\n  added_by: body.added_by || body.addedBy || '',\n  communets_code: body.communets_code || body.communetsCode || '',\n  status: body.status || 'Active',\n  stock_qty: body.stock_qty || body.stockQty || '',\n  vendor_details: body.vendor_details || body.vendorDetails || '',\n  vendor_contact: body.vendor_contact || body.vendorContact || '',\n  image_url: body.image_url || '',\n  image_url_2: body.image_url_2 || '',\n  image_url_3: body.image_url_3 || '',\n  image_url_4: body.image_url_4 || '',\n};\n\nreturn [{json: baseData}];"
+      },
+      "id": "0c59d479-3e48-4ab4-ab66-f6041c4a1981",
+      "name": "Extract User Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1872,
+        -848
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const prev = $('Extract User Input').first().json;\n\nconst productName = prev.product_name || '';\nconst brand = prev.brand || '';\nconst category = prev.category || '';\nconst subcategory = prev.subcategory || '';\nconst ean = prev.ean || '';\n\nconst baseData = {\n  product_name: productName,\n  brand: brand,\n  ean: ean,\n  category: category,\n  subcategory: subcategory,\n  unit: prev.unit || '',\n  wholesale_qty: prev.wholesale_qty || '',\n  price_wholesale: prev.price_wholesale || '',\n  price_retail: prev.price_retail || ''\n};\n\nconst queries = [\n  `${brand} ${productName} technical specifications datasheet`,\n  `${ean ? ean + ' ' : ''}${productName} ${subcategory || category} features details`\n].filter(q => q.trim().length > 5);\n\nreturn queries.map((q, i) => ({ json: { ...baseData, query: q, queryIndex: i } }));"
+      },
+      "id": "8d7f3389-4d4e-4b83-a4e8-259cc4c6d1d6",
+      "name": "Build Search Queries",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1360,
+        -848
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://google.serper.dev/search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={ \"q\": {{ JSON.stringify($json.query) }}, \"num\": 10 }",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 2
+            }
+          }
+        }
+      },
+      "id": "4890d90e-14c9-4bcc-bc2c-c4973815c2b6",
+      "name": "Serper Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1104,
+        -848
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SERPER_CREDENTIAL_ID",
+          "name": "Serper Api Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const allItems = $input.all();\nconst userData = $('Extract User Input').first().json;\n\nconst baseData = {\n  product_name: userData.product_name,\n  brand: userData.brand,\n  ean: userData.ean,\n  category: userData.category,\n  subcategory: userData.subcategory,\n  unit: userData.unit,\n  wholesale_qty: userData.wholesale_qty,\n  price_wholesale: userData.price_wholesale,\n  price_retail: userData.price_retail\n};\n\nconst urlSet = new Set();\nconst results = [];\n\nconst skipDomains = ['wikipedia.org','reddit.com','youtube.com','facebook.com',\n  'twitter.com','instagram.com','pinterest.com','quora.com','linkedin.com'];\n\nfor (const item of allItems) {\n  const searchItems = item.json.organic || [];\n  for (const r of searchItems) {\n    const url = r.link;\n    if (!url || urlSet.has(url)) continue;\n    if (skipDomains.some(d => url.includes(d))) continue;\n    urlSet.add(url);\n    results.push({ url, title: r.title || '', snippet: r.snippet || '' });\n  }\n}\n\nreturn [{ json: { ...baseData, urls: results, total_found: results.length } }];"
+      },
+      "id": "8a539351-ccff-4993-a36e-193ddf9f71e5",
+      "name": "Aggregate URLs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -832,
+        -848
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst userData = $('Extract User Input').first().json;\n\nconst prompt = `<|im_start|>system\\nYou are a JSON-only output machine.\\n\\nYou MUST return ONLY a valid JSON object.\\nDo NOT return text, explanations, markdown, or code fences.\\nYour entire response must start with { and end with }.\\n\\nIf the output is not valid JSON, regenerate and correct it before responding.\\n<|im_end|>\\n\\n<|im_start|>user\\nYou are a senior Amazon marketplace SEO copywriter and technical product expert.\\nCreate a HIGH-CONVERSION ecommerce product listing using ONLY the scraped data provided.\\n\\n========================\\nINPUT DATA\\n========================\\nProduct: ${userData.product_name}\\nBrand: ${userData.brand}\\nCategory: ${userData.category} > ${userData.subcategory}\\nEAN: ${userData.ean || 'N/A'}\\n\\nSCRAPED PRODUCT DATA:\\n${data.scraped_texts}\\n\\n========================\\nTASKS\\n========================\\n\\n1. AMAZON-STYLE SEO TITLE\\n- 70–170 characters\\n- Brand first, product type, 2 key specs, main benefit\\n- No marketing words like \\\"Best\\\", \\\"Cheap\\\", \\\"Offer\\\"\\n\\n2. PRODUCT OVERVIEW\\n- 80–100 words\\n- Explain what it is, who it's for, main purpose, build quality\\n\\n3. KEY FEATURES & BENEFITS\\n- EXACTLY 5 bullet points\\n- Each bullet MAX 15 words\\n- Convert specs into benefits\\n\\n4. DETAILED PRODUCT DESCRIPTION\\n- 120–180 words\\n- Include materials, performance, compatibility, durability, usage scenarios\\n\\n5. TECHNICAL SPECIFICATIONS\\n- Extract ONLY from scraped data\\n- 10–15 specs\\n- EXCLUDE pricing, delivery, warranty, offers, reviews, stock info\\n\\n========================\\nSTRICT OUTPUT FORMAT\\n========================\\n\\nReturn ONLY this JSON structure:\\n\\n{\\n  \\\"seo_title\\\": \\\"\\\",\\n  \\\"overview\\\": \\\"\\\",\\n  \\\"features\\\": [\\\"\\\", \\\"\\\", \\\"\\\", \\\"\\\", \\\"\\\"],\\n  \\\"detailed_description\\\": \\\"\\\",\\n  \\\"specs\\\": [\\n    { \\\"key\\\": \\\"\\\", \\\"value\\\": \\\"\\\" }\\n  ]\\n}\\n\\nRULES:\\n- Do NOT skip any field\\n- features MUST always be an array of 5 strings\\n- specs MUST always be an array of objects with \\\"key\\\" and \\\"value\\\"\\n- If data is missing, return \\\"\\\" or []\\n- Do NOT add any extra fields\\n- Do NOT change the structure\\n- Do NOT return plain text\\n\\n<|im_end|>\\n<|im_start|>assistant\\n`;\n\nreturn [{\n  json: {\n    user_input: {\n      product_name: userData.product_name,\n      brand: userData.brand,\n      ean: userData.ean,\n      category: userData.category,\n      subcategory: userData.subcategory,\n      unit: userData.unit,\n      wholesale_qty: userData.wholesale_qty,\n      price_wholesale: userData.price_wholesale,\n      price_retail: userData.price_retail\n    },\n    prompt: prompt\n  }\n}];"
+      },
+      "id": "2d99fac7-2a45-4e48-b446-9b4786c96451",
+      "name": "Prepare Description Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        384,
+        -864
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst allUrls = data.urls || [];\n\n// Separate PDFs from scrapeable URLs\nconst pdfSnippets = [];\nconst scrapeable = [];\n\nfor (const urlObj of allUrls) {\n  const u = (urlObj.url || '').toLowerCase();\n  if (u.match(/\\.pdf($|\\?|#)/)) {\n    pdfSnippets.push('PDF: ' + (urlObj.title || '') + ' — ' + (urlObj.snippet || ''));\n  } else {\n    scrapeable.push(urlObj);\n  }\n}\n\n// Take top 3 non-PDF URLs\nconst topUrls = scrapeable.slice(0, 3);\n\n// Pass PDF snippets as supplementary context\nconst pdfContext = pdfSnippets.join('\\n');\n\n// FIX: fallback if no URLs\nif (topUrls.length === 0) {\n  return [{\n    json: {\n      ...data,\n      pdf_context: pdfContext,\n      scrape_url: null,\n      scrape_index: -1,\n      snippet_data: null,\n      no_urls_found: true\n    }\n  }];\n}\n\n// Normal flow\nreturn topUrls.map((urlObj, i) => ({\n  json: {\n    ...data,\n    pdf_context: pdfContext,\n    scrape_url: urlObj.url,\n    scrape_index: i,\n    snippet_data: {\n      url: urlObj.url,\n      title: urlObj.title || 'N/A',\n      snippet: urlObj.snippet || 'No snippet available'\n    }\n  }\n}));"
+      },
+      "id": "8e848c58-6a85-41dd-b0ff-e2d97127ccdd",
+      "name": "Select Scrape URLs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -320,
+        -864
+      ]
+    },
+    {
+      "parameters": {
+        "model": "qwen2.5:7b",
+        "options": {
+          "temperature": 0.2,
+          "numPredict": 8192
+        }
+      },
+      "id": "d6f716a3-5359-4e44-a94e-1ccc88a77f17",
+      "name": "Ollama Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        624,
+        -656
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "OLLAMA_CREDENTIAL_ID",
+          "name": "Ollama Local API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.prompt }}"
+      },
+      "id": "465a3717-85d0-44b1-b8d9-7c705bde33fe",
+      "name": "Generate Description1",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [
+        624,
+        -864
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst rawInput = $input.first().json;\nconst aiText = rawInput.text || rawInput.response || rawInput.output || '';\nconst userInput = $('Extract User Input').first().json;\n\nlet generatedContent = {};\n\nfunction tryParse(s) {\n  try { return JSON.parse(s); } catch(_) { return null; }\n}\n\nfunction extractAndRepairJSON(raw) {\n  if (!raw || typeof raw !== 'string') return null;\n\n  let s = raw.replace(/```json\\s*/gi, '').replace(/```\\s*/gi, '').trim();\n\n  let start = s.indexOf('{');\n  let end = s.lastIndexOf('}');\n\n  if (start === -1) {\n    s = '{' + s;\n    start = 0;\n    end = s.lastIndexOf('}');\n  }\n\n  if (start !== -1 && end > start) {\n    s = s.substring(start, end + 1);\n  } else if (start !== -1) {\n    s = s.substring(start);\n  }\n\n  let result = tryParse(s);\n  if (result) return result;\n\n  s = s.replace(/(?<=\\\":[\\s]*\\\"[^\\\"]*)\\n(?=[^\\\"]*\\\")/g, ' ');\n  s = s.replace(/,\\s*([}\\]])/g, '$1');\n  s = s.replace(/[\\u201C\\u201D]/g, '\"').replace(/[\\u2018\\u2019]/g, \"'\");\n\n  result = tryParse(s);\n  if (result) return result;\n\n  let ob = 0, oq = 0, inStr = false, escape = false;\n  for (const c of s) {\n    if (escape) { escape = false; continue; }\n    if (c === '\\\\') { escape = true; continue; }\n    if (c === '\"') { inStr = !inStr; continue; }\n    if (inStr) continue;\n    if (c === '{') ob++; if (c === '}') ob--;\n    if (c === '[') oq++; if (c === ']') oq--;\n  }\n  while (oq > 0) { s += ']'; oq--; }\n  while (ob > 0) { s += '}'; ob--; }\n\n  result = tryParse(s);\n  if (result) return result;\n\n  const lc = s.lastIndexOf(',\\n');\n  if (lc > 50) {\n    let tr = s.substring(0, lc);\n    ob = 0; oq = 0;\n    for (const c of tr) {\n      if (c === '{') ob++; if (c === '}') ob--;\n      if (c === '[') oq++; if (c === ']') oq--;\n    }\n    while (oq > 0) { tr += ']'; oq--; }\n    while (ob > 0) { tr += '}'; ob--; }\n    result = tryParse(tr);\n    if (result) return result;\n  }\n\n  return null;\n}\n\ntry {\n  const aiString = typeof aiText === 'string' ? aiText : JSON.stringify(aiText);\n  generatedContent = extractAndRepairJSON(aiString) || {};\n} catch(e) {\n  generatedContent = {};\n}\n\nreturn [{\n  json: {\n    user_input: {\n      product_name: userInput.product_name || '',\n      brand: userInput.brand || '',\n      ean: userInput.ean || '',\n      category: userInput.category || '',\n      subcategory: userInput.subcategory || '',\n      unit: userInput.unit || '',\n      wholesale_qty: userInput.wholesale_qty || '',\n      price_wholesale: userInput.price_wholesale || '',\n      price_retail: userInput.price_retail || ''\n    },\n    generated_content: {\n      seo_title: generatedContent.seo_title || userInput.product_name || '',\n      overview: generatedContent.overview || '',\n      features: Array.isArray(generatedContent.features) ? generatedContent.features : [],\n      detailed_description: generatedContent.detailed_description || '',\n      specs: Array.isArray(generatedContent.specs) ? generatedContent.specs : []\n    }\n  }\n}];"
+      },
+      "id": "066d5a8d-96b0-4966-9097-71c11e9aaf29",
+      "name": "Extract AI Results1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1024,
+        -864
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.scrape_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            },
+            {
+              "name": "Accept",
+              "value": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"
+            },
+            {
+              "name": "Accept-Language",
+              "value": "en-US,en;q=0.9"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 3
+            }
+          },
+          "allowUnauthorizedCerts": true,
+          "redirect": {
+            "redirect": {
+              "maxRedirects": 3
+            }
+          },
+          "response": {
+            "response": {}
+          },
+          "timeout": 12000
+        }
+      },
+      "id": "2e4c43fc-abd4-4be9-a65c-797a46dfee77",
+      "name": "Scrape Webpage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -112,
+        -864
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const scrapedItems = $input.all();\nconst originalItems = $('Select Scrape URLs').all();\nconst userData = $('Extract User Input').first().json;\nconst aggData = $('Aggregate URLs').first().json;\n\nconst baseData = {\n  product_name: userData.product_name,\n  brand: userData.brand,\n  ean: userData.ean,\n  category: userData.category,\n  subcategory: userData.subcategory,\n  unit: userData.unit,\n  wholesale_qty: userData.wholesale_qty,\n  price_wholesale: userData.price_wholesale,\n  price_retail: userData.price_retail,\n  urls: aggData.urls || []\n};\n\nfunction isBinaryOrPdf(text, url) {\n  if (!text) return false;\n  if (url && url.toLowerCase().includes('.pdf')) return true;\n  if (text.startsWith('%PDF')) return true;\n  const sample = text.substring(0, 300);\n  const nonPrint = (sample.match(/[\\x00-\\x08\\x0E-\\x1F\\x7F]/g) || []).length;\n  return nonPrint / Math.max(sample.length, 1) > 0.1;\n}\n\nlet scrapedTexts = '';\nlet successCount = 0;\n\nscrapedItems.forEach((item, i) => {\n  const orig = originalItems[i]?.json || {};\n  const url = orig.scrape_url || 'unknown';\n  const snippetData = orig.snippet_data || {};\n  const fallbackSnippet = snippetData.snippet || snippetData.title || '';\n\n  let rawBody = item.json.data || item.json.body || '';\n  if (typeof rawBody !== 'string') rawBody = JSON.stringify(rawBody);\n\n  if (isBinaryOrPdf(rawBody, url)) {\n    scrapedTexts += `\\n\\n--- SOURCE ${i+1} (${url}) ---\\nPDF/Binary file. Key info from snippet: ${fallbackSnippet}`;\n    return;\n  }\n\n  let cleanText = rawBody\n    .replace(/<style[^>]*>[\\s\\S]*?<\\/style>/gi, '')\n    .replace(/<script[^>]*>[\\s\\S]*?<\\/script>/gi, '')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&nbsp;|\\u00a0/g, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim();\n\n  const blockedSignals = ['Access Denied','Attention Required','enable JavaScript',\n    'Enable cookies','Cloudflare','403 Forbidden','429 Too Many','robot check'];\n  const isBlocked = cleanText.length < 200 ||\n    blockedSignals.some(k => cleanText.toLowerCase().includes(k.toLowerCase()));\n\n  if (isBlocked) {\n    scrapedTexts += `\\n\\n--- SOURCE ${i+1} (${url}) ---\\nScraping blocked. Key info from snippet: ${fallbackSnippet}`;\n  } else {\n    successCount++;\n    scrapedTexts += `\\n\\n--- SOURCE ${i+1} (${url}) ---\\n${cleanText.substring(0, 8000)}`;\n  }\n});\n\nconst pdfContext = originalItems[0]?.json?.pdf_context || '';\nif (pdfContext) {\n  scrapedTexts += '\\n\\n--- PDF SOURCES (not scraped, snippet only) ---\\n' + pdfContext;\n}\n\nif (successCount < 2) {\n  const allUrls = baseData.urls || [];\n  if (allUrls.length > 0) {\n    let extra = '\\n\\n--- SUPPLEMENTARY CONTEXT FROM SEARCH RESULTS ---\\n';\n    extra += '(Use these titles and snippets to generate the product description)\\n';\n    allUrls.slice(0, 25).forEach((u, idx) => {\n      if (u.snippet || u.title) {\n        extra += `\\n[${idx+1}] ${u.title || ''}\\n${u.snippet || ''}`;\n      }\n    });\n    scrapedTexts += extra;\n  }\n}\n\nreturn [{ json: { ...baseData, scraped_texts: scrapedTexts, scrape_success_count: successCount } }];"
+      },
+      "id": "de075a6b-3e0f-4960-98a2-bead1b63be62",
+      "name": "Clean & Aggregate Text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        112,
+        -864
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "fb138f5b-56d3-4e46-8020-e2c07decdf1a",
+              "leftValue": "={{ Array.isArray($json.urls) && $json.urls.length > 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -624,
+        -848
+      ],
+      "id": "4f7ada1c-7f03-42d0-a1cf-4872ce86c3bb",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputData = $input.first().json;\nconst userData = inputData;\nconst scrapedData = inputData.scraped_texts || \"No scraped data available\";\n\nconst prompt = `<|im_start|>system\\nYou are a JSON-only output machine.\\n\\nYou MUST return ONLY a valid JSON object.\\nDo NOT return text, explanations, markdown, or code fences.\\nYour entire response must start with { and end with }.\\n\\nIf the output is not valid JSON, regenerate and correct it before responding.\\n<|im_end|>\\n\\n<|im_start|>user\\nYou are a senior Amazon marketplace SEO copywriter and technical product expert.\\nCreate a HIGH-CONVERSION ecommerce product listing using ONLY the scraped data provided.\\n\\n========================\\nINPUT DATA\\n========================\\nProduct: ${userData.product_name}\\nBrand: ${userData.brand}\\nCategory: ${userData.category} > ${userData.subcategory}\\nEAN: ${userData.ean || 'N/A'}\\n\\nSCRAPED PRODUCT DATA:\\n${scrapedData}\\n\\n========================\\nTASKS\\n========================\\n\\n1. AMAZON-STYLE SEO TITLE\\n- 70–170 characters\\n- Brand first, product type, 2 key specs, main benefit\\n- No marketing words like \\\"Best\\\", \\\"Cheap\\\", \\\"Offer\\\"\\n\\n2. PRODUCT OVERVIEW\\n- 80–100 words\\n- Explain what it is, who it's for, main purpose, build quality\\n\\n3. KEY FEATURES & BENEFITS\\n- EXACTLY 5 bullet points\\n- Each bullet MAX 15 words\\n- Convert specs into benefits\\n\\n4. DETAILED PRODUCT DESCRIPTION\\n- 120–180 words\\n- Include materials, performance, compatibility, durability, usage scenarios\\n\\n5. TECHNICAL SPECIFICATIONS\\n- Extract ONLY from scraped data\\n- 10–15 specs\\n- EXCLUDE pricing, delivery, warranty, offers, reviews, stock info\\n\\n========================\\nSTRICT OUTPUT FORMAT\\n========================\\n\\nReturn ONLY this JSON structure:\\n\\n{\\n  \\\"seo_title\\\": \\\"\\\",\\n  \\\"overview\\\": \\\"\\\",\\n  \\\"features\\\": [\\\"\\\", \\\"\\\", \\\"\\\", \\\"\\\", \\\"\\\"],\\n  \\\"detailed_description\\\": \\\"\\\",\\n  \\\"specs\\\": [\\n    { \\\"key\\\": \\\"\\\", \\\"value\\\": \\\"\\\" }\\n  ]\\n}\\n\\nRULES:\\n- Do NOT skip any field\\n- features MUST always be an array of 5 strings\\n- specs MUST always be an array of objects with \\\"key\\\" and \\\"value\\\"\\n- If data is missing, return \\\"\\\" or []\\n- Do NOT add any extra fields\\n- Do NOT change the structure\\n- Do NOT return plain text\\n\\n<|im_end|>\\n<|im_start|>assistant\\n`;\n\nreturn [{\n  json: {\n    user_input: {\n      product_name: userData.product_name,\n      brand: userData.brand,\n      ean: userData.ean,\n      category: userData.category,\n      subcategory: userData.subcategory,\n      unit: userData.unit,\n      wholesale_qty: userData.wholesale_qty,\n      price_wholesale: userData.price_wholesale,\n      price_retail: userData.price_retail\n    },\n    prompt: prompt\n  }\n}];"
+      },
+      "id": "850878ae-2ee8-4904-be85-6546f32da697",
+      "name": "Prepare Description Prompt1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -592,
+        -336
+      ]
+    },
+    {
+      "parameters": {
+        "model": "qwen2.5:7b",
+        "options": {
+          "temperature": 0.2,
+          "numPredict": 8192
+        }
+      },
+      "id": "8d0a30d5-5aef-4f08-b955-ca8a2561dc37",
+      "name": "Ollama Chat Model1",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        80,
+        -128
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "OLLAMA_CREDENTIAL_ID",
+          "name": "Ollama Local API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.prompt }}"
+      },
+      "id": "61ecadd3-4de8-4354-8bb9-e064c3f9537a",
+      "name": "Generate Description",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [
+        80,
+        -336
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rawInput = $input.first().json;\nconst aiText = rawInput.text || rawInput.response || rawInput.output || '';\nconst userInput = $input.first().json.user_input || {};\n\nlet generatedContent = {};\n\nfunction tryParse(s) {\n  try { return JSON.parse(s); } catch(_) { return null; }\n}\n\nfunction extractAndRepairJSON(raw) {\n  if (!raw || typeof raw !== 'string') return null;\n\n  let s = raw.replace(/```json\\s*/gi, '').replace(/```\\s*/gi, '').trim();\n\n  let start = s.indexOf('{');\n  let end = s.lastIndexOf('}');\n\n  if (start === -1) {\n    s = '{' + s;\n    start = 0;\n    end = s.lastIndexOf('}');\n  }\n\n  if (start !== -1 && end > start) {\n    s = s.substring(start, end + 1);\n  } else if (start !== -1) {\n    s = s.substring(start);\n  }\n\n  let result = tryParse(s);\n  if (result) return result;\n\n  s = s.replace(/(?<=\\\":[\\s]*\\\"[^\\\"]*)\\n(?=[^\\\"]*\\\")/g, ' ');\n  s = s.replace(/,\\s*([}\\]])/g, '$1');\n  s = s.replace(/[\\u201C\\u201D]/g, '\"').replace(/[\\u2018\\u2019]/g, \"'\");\n\n  result = tryParse(s);\n  if (result) return result;\n\n  let ob = 0, oq = 0, inStr = false, escape = false;\n  for (const c of s) {\n    if (escape) { escape = false; continue; }\n    if (c === '\\\\') { escape = true; continue; }\n    if (c === '\"') { inStr = !inStr; continue; }\n    if (inStr) continue;\n    if (c === '{') ob++; if (c === '}') ob--;\n    if (c === '[') oq++; if (c === ']') oq--;\n  }\n  while (oq > 0) { s += ']'; oq--; }\n  while (ob > 0) { s += '}'; ob--; }\n\n  result = tryParse(s);\n  if (result) return result;\n\n  const lc = s.lastIndexOf(',\\n');\n  if (lc > 50) {\n    let tr = s.substring(0, lc);\n    ob = 0; oq = 0;\n    for (const c of tr) {\n      if (c === '{') ob++; if (c === '}') ob--;\n      if (c === '[') oq++; if (c === ']') oq--;\n    }\n    while (oq > 0) { tr += ']'; oq--; }\n    while (ob > 0) { tr += '}'; ob--; }\n    result = tryParse(tr);\n    if (result) return result;\n  }\n\n  return null;\n}\n\ntry {\n  const aiString = typeof aiText === 'string' ? aiText : JSON.stringify(aiText);\n  generatedContent = extractAndRepairJSON(aiString) || {};\n} catch(e) {\n  generatedContent = {};\n}\n\nreturn [{\n  json: {\n    user_input: {\n      product_name: $('Prepare Description Prompt1').first().json.user_input.product_name || '',\n      brand:  $('Prepare Description Prompt1').first().json.user_input.brand|| '',\n      ean: $('Prepare Description Prompt1').first().json.user_input.ean || '',\n      category: $('Prepare Description Prompt1').first().json.user_input.category || '',\n      subcategory: $('Prepare Description Prompt1').first().json.user_input.subcategory || '',\n      unit:  $('Prepare Description Prompt1').first().json.user_input.unit|| '',\n      wholesale_qty: $('Prepare Description Prompt1').first().json.user_input.wholesale_qty || '',\n      price_wholesale: $('Prepare Description Prompt1').first().json.user_input.price_wholesale || '',\n      price_retail: $('Prepare Description Prompt1').first().json.user_input.price_retail || ''\n    },\n    generated_content: {\n      seo_title: generatedContent.seo_title || userInput.product_name || '',\n      overview: generatedContent.overview || '',\n      features: Array.isArray(generatedContent.features) ? generatedContent.features : [],\n      detailed_description: generatedContent.detailed_description || '',\n      specs: Array.isArray(generatedContent.specs) ? generatedContent.specs : []\n    }\n  }\n}];"
+      },
+      "id": "9f6f0a96-833f-41d0-a293-a98b1f443c13",
+      "name": "Extract AI Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        -336
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract User Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract User Input": {
+      "main": [
+        [
+          {
+            "node": "Build Search Queries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Search Queries": {
+      "main": [
+        [
+          {
+            "node": "Serper Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Serper Search": {
+      "main": [
+        [
+          {
+            "node": "Aggregate URLs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate URLs": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Description Prompt": {
+      "main": [
+        [
+          {
+            "node": "Generate Description1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select Scrape URLs": {
+      "main": [
+        [
+          {
+            "node": "Scrape Webpage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Generate Description1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Description1": {
+      "main": [
+        [
+          {
+            "node": "Extract AI Results1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract AI Results1": {
+      "main": [
+        []
+      ]
+    },
+    "Scrape Webpage": {
+      "main": [
+        [
+          {
+            "node": "Clean & Aggregate Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean & Aggregate Text": {
+      "main": [
+        [
+          {
+            "node": "Prepare Description Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Select Scrape URLs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Description Prompt1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Description Prompt1": {
+      "main": [
+        [
+          {
+            "node": "Generate Description",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Generate Description",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Description": {
+      "main": [
+        [
+          {
+            "node": "Extract AI Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
